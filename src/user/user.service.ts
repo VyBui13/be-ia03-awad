@@ -1,13 +1,22 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './user.schema';
 import { RegisterUserDto } from './dto/register-user.dto';
+import { JwtService } from '@nestjs/jwt';
+import { LoginUserDto } from './dto/login-user.dto';
 
 @Injectable()
 export class UserService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private jwtService: JwtService, // 2. Inject JwtService
+  ) {}
 
   async register(registerUserDto: RegisterUserDto): Promise<UserDocument> {
     const { email, password } = registerUserDto;
@@ -31,5 +40,32 @@ export class UserService {
     });
 
     return createdUser.save();
+  }
+
+  async login(loginUserDto: LoginUserDto): Promise<{ accessToken: string }> {
+    const { email, password } = loginUserDto;
+
+    // 1. Tìm user
+    const user = await this.userModel.findOne({ email });
+
+    // 2. Kiểm tra user và mật khẩu
+    // Dùng chung 1 lỗi "Unauthorized" để bảo mật (tránh lộ thông tin "user không tồn tại")
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordMatching = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordMatching) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // 3. Tạo JWT payload
+    const payload = { email: user.email, sub: user._id };
+
+    // 4. Ký và trả về token
+    return {
+      accessToken: await this.jwtService.signAsync(payload),
+    };
   }
 }
