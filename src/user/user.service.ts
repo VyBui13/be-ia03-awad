@@ -9,7 +9,6 @@ import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './user.schema';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { JwtService } from '@nestjs/jwt';
-import { LoginUserDto } from './dto/login-user.dto';
 
 @Injectable()
 export class UserService {
@@ -42,30 +41,11 @@ export class UserService {
     return createdUser.save();
   }
 
-  async login(loginUserDto: LoginUserDto): Promise<{ accessToken: string }> {
-    const { email, password } = loginUserDto;
+  async findByEmail(email: string): Promise<UserDocument | null> {
+    return this.userModel.findOne({ email }).exec();
+  }
 
-    // 1. Tìm user
-    const user = await this.userModel.findOne({ email });
-
-    // 2. Kiểm tra user và mật khẩu
-    // Dùng chung 1 lỗi "Unauthorized" để bảo mật (tránh lộ thông tin "user không tồn tại")
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const isPasswordMatching = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordMatching) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // 3. Tạo JWT payload
-    const payload = { email: user.email, sub: user._id };
-
-    // 4. Ký và trả về token
-    return {
-      accessToken: await this.jwtService.signAsync(payload),
-    };
+  async findById(id: string): Promise<UserDocument | null> {
+    return this.userModel.findById(id).exec();
   }
 }
