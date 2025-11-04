@@ -1,7 +1,16 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  Get,
+  Request,
+} from '@nestjs/common';
 import { UserService } from './user.service';
 import { RegisterUserDto } from './dto/register-user.dto';
-import { LoginUserDto } from './dto/login-user.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('user') // Định nghĩa route prefix là /user
 export class UserController {
@@ -13,10 +22,11 @@ export class UserController {
     await this.userService.register(registerUserDto);
   }
 
-  @Post('login')
-  @HttpCode(HttpStatus.OK) // Trả về 200 OK
-  async login(@Body() loginUserDto: LoginUserDto) {
-    // Không cần try/catch vì Exception Filter của NestJS sẽ tự bắt lỗi
-    return this.userService.login(loginUserDto);
+  @UseGuards(JwtAuthGuard) // <-- 1. Áp dụng Guard
+  @Get('me')
+  getProfile(@Request() req) {
+    // 2. Lấy user từ request (đã được JwtStrategy đính kèm)
+    // req.user chính là object 'result' bạn trả về từ hàm validate()
+    return req.user;
   }
 }
