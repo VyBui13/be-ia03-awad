@@ -15,7 +15,7 @@ export class UserService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService, // 2. Inject JwtService
-  ) {}
+  ) { }
 
   async register(registerUserDto: RegisterUserDto): Promise<UserDocument> {
     const { email, password } = registerUserDto;
@@ -47,5 +47,22 @@ export class UserService {
 
   async findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
+  }
+
+  async createByGoogle(email: string, name: string, avatar: string): Promise<UserDocument> {
+    // random pass
+    const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+    const newUser = new this.userModel({
+      email,
+      password: hashedPassword,
+      name,
+      avatar,
+    });
+
+    return newUser.save();
   }
 }
