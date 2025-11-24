@@ -1,10 +1,15 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from 'src/user/user.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import * as bcrypt from 'bcrypt';
+import axios from 'axios';
+import { jwtDecode } from 'jwt-decode';
+import { InjectModel } from '@nestjs/mongoose/dist/common/mongoose.decorators';
+import { LinkedAccount, LinkedAccountDocument } from './linked-account.schema';
+import { Model } from 'mongoose';
 
 @Injectable()
 export class AuthService {
@@ -12,7 +17,8 @@ export class AuthService {
     private userService: UserService, // <--- 2. Inject UserService
     private jwtService: JwtService,
     private configService: ConfigService,
-  ) {}
+    @InjectModel(LinkedAccount.name) private linkedAccountModel: Model<LinkedAccountDocument>,
+  ) { }
 
   // HÀM 1: LOGIN
   async login(loginDto: LoginUserDto) {
@@ -71,5 +77,68 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  async loginWithGoogle(code: string) {
+    if (!code) {
+      throw new BadRequestException('Authorization code is required');
+    }
+
+    try {
+      const tokenUrl = 'https://oauth2.googleapis.com/token';
+      const googleRes = await axios.post(tokenUrl, {
+        code,
+        client_id: this.configService.get('GOOGLE_CLIENT_ID'),
+        client_secret: this.configService.get('GOOGLE_CLIENT_SECRET'),
+        redirect_uri: this.configService.get('GOOGLE_REDIRECT_URI'),
+        grant_type: 'authorization_code',
+      }, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+
+      const { access_token, refresh_token, id_token } = googleRes.data;
+
+      // Decode id_token để lấy info user
+      const googleUser: any = jwtDecode(id_token);
+      const { sub: googleId, email, name, picture } = googleUser;
+
+      let linkedAccount = await this.linkedAccountModel.findOne({
+        provider: 'google',
+        providerId: googleId,
+      });
+
+      let user;
+
+      if (linkedAccount) {
+        // Case A: Đã link trước đó -> Lấy user ra
+        user = await this.userService.findById(linkedAccount.user.toString());
+
+        linkedAccount.accessToken = access_token;
+        if (refresh_token) linkedAccount.refreshToken = refresh_token;
+        await linkedAccount.save();
+
+      } else {
+        // Case B: Chưa link -> Check xem email đã có trong bảng User chưa
+        user = await this.userService.findByEmail(email);
+
+        if (!user) {
+          user = await this.userService.createByGoogle(email, name, picture);
+        }
+
+        await this.linkedAccountModel.create({
+          user: user._id,
+          provider: 'google',
+          providerId: googleId,
+          accessToken: access_token,
+          refreshToken: refresh_token,
+        });
+      }
+
+      return this.generateTokens(user);
+
+    } catch (error) {
+      console.error(error);
+      throw new UnauthorizedException('Google authentication failed');
+    }
   }
 }
