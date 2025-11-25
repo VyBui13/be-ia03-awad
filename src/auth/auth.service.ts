@@ -137,7 +137,11 @@ export class AuthService {
       return this.generateTokens(user);
 
     } catch (error) {
-      console.error(error);
+      console.error('============ GOOGLE ERROR LOG ============');
+      console.error('Status:', error.response?.status);
+      console.error('Data:', JSON.stringify(error.response?.data));
+      console.error('Config Redirect URI:', this.configService.get('GOOGLE_REDIRECT_URI')); // In luôn cái URI đang dùng ra xem đúng không
+      console.error('==========================================');
       throw new UnauthorizedException('Google authentication failed');
     }
   }
